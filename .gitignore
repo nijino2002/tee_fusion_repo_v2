@@ -1,0 +1,9 @@
+build/
+*.o
+*.a
+*.so
+*.ta
+.vscode/
+.cache/
+*.zip
+*.img *.bin *.tar.gz *.qcow2
