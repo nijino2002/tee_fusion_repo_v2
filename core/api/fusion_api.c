@@ -1,6 +1,9 @@
 #include <string.h>
 #include <stdlib.h>
+#ifdef HAVE_OPENSSL
 #include <openssl/rand.h>
+#endif
+#include <stdio.h>
 #include "../../include/tee_fusion.h"
 typedef struct {
   tee_status_t (*get_report)(tee_buf_t*);
@@ -18,7 +21,22 @@ static tee_adapter_vt g_vt; static tee_info_t g_info = { TEE_CLASS_UNKNOWN, 0, T
 tee_status_t tee_init(const tee_init_opt_t* opt, tee_info_t* out){ (void)opt; memset(&g_vt,0,sizeof(g_vt)); tee_register_active_adapter(&g_vt); if(g_vt.platform_id) g_info.platform=g_vt.platform_id(); g_info.caps=TEE_CAP_ATTESTATION|TEE_CAP_RA_TLS; if(out)*out=g_info; return TEE_OK; }
 void         tee_exit(int code){ (void)code; }
 tee_status_t tee_get_info(tee_info_t* out){ if(!out) return TEE_EINVAL; *out=g_info; return TEE_OK; }
-tee_status_t tee_get_random(void* buf, size_t len){ if(!buf) return TEE_EINVAL; if(g_vt.rand_bytes) return g_vt.rand_bytes(buf,len); return RAND_bytes((unsigned char*)buf,(int)len)==1?TEE_OK:TEE_EINTERNAL; }
+static int urandom_bytes(unsigned char* p, size_t n){
+  FILE* f = fopen("/dev/urandom", "rb");
+  if(!f) return 0;
+  size_t r = fread(p, 1, n, f);
+  fclose(f);
+  return r == n;
+}
+tee_status_t tee_get_random(void* buf, size_t len){
+  if(!buf) return TEE_EINVAL;
+  if(g_vt.rand_bytes) return g_vt.rand_bytes(buf,len);
+#ifdef HAVE_OPENSSL
+  return RAND_bytes((unsigned char*)buf,(int)len)==1?TEE_OK:TEE_EINTERNAL;
+#else
+  return urandom_bytes((unsigned char*)buf,len)?TEE_OK:TEE_EINTERNAL;
+#endif
+}
 tee_status_t tee_trusted_time(uint64_t* ns){ if(!ns) return TEE_EINVAL; *ns=0; return TEE_ENOTSUP; }
 tee_status_t tee_get_report(tee_buf_t* out){ if(!g_vt.get_report) return TEE_ENOTSUP; return g_vt.get_report(out); }
 tee_status_t tee_get_u_evidence(tee_buf_t* out){ if(!g_vt.get_report||!g_vt.fill_platform_claims) return TEE_ENOTSUP; tee_buf_t rpt={0}; tee_status_t s=g_vt.get_report(&rpt); if(s!=TEE_OK) return s; s=g_vt.fill_platform_claims(rpt.ptr,rpt.len); free(rpt.ptr); if(s!=TEE_OK) return s; return core_build_uevidence(out); }

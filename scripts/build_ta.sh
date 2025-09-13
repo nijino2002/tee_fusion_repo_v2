@@ -1,15 +1,51 @@
 #!/usr/bin/env bash
-set -euo pipefail
-source "$(dirname "$0")/env-optee-qemu.sh"
-cd "${BASEDIR}"
+# Robust TA build script (no BASEDIR collision)
 
-if [ ! -d "${TA_DEV_KIT_DIR}" ]; then
-  echo "TA_DEV_KIT_DIR not found, please run scripts/setup_optee_qemu_v8.sh" >&2
+set -euo pipefail
+
+# Resolve repo root from THIS script, and keep it immutable
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+echo "[ta] REPO_ROOT=${REPO_ROOT}"
+
+# Source OP-TEE env (but DO NOT trust its BASEDIR)
+ENV_FILE="${REPO_ROOT}/scripts/env-optee-qemu.sh"
+if [[ -f "${ENV_FILE}" ]]; then
+  # shellcheck disable=SC1090
+  . "${ENV_FILE}"
+else
+  echo "[ta] ERROR: ${ENV_FILE} not found. Run scripts/setup_optee_env.sh first." >&2
   exit 1
 fi
 
-make -C optee/ta
-echo "[ta] built"
-TA_UUID_HEX="7a9b3b24-3e2f-4d5f-912d-8b7c1355629a"
-TA_BIN="optee/ta/${TA_UUID_HEX}.ta"
-[ -f "${TA_BIN}" ] && echo "[ta] artifact: ${TA_BIN}"
+# Prefer variables from env for toolchain/devkit, but always use REPO_ROOT for paths in this repo
+: "${TA_DEV_KIT_DIR:?TA_DEV_KIT_DIR missing. Check ${ENV_FILE}}"
+if [[ ! -d "${TA_DEV_KIT_DIR}" ]]; then
+  echo "[ta] ERROR: TA_DEV_KIT_DIR does not exist: ${TA_DEV_KIT_DIR}" >&2
+  exit 1
+fi
+
+TADIR="${REPO_ROOT}/optee/ta"
+if [[ ! -d "${TADIR}" ]]; then
+  echo "[ta] ERROR: TA dir not found: ${TADIR}" >&2
+  exit 1
+fi
+
+echo "[ta] Using TA_DEV_KIT_DIR=${TA_DEV_KIT_DIR}"
+echo "[ta] Building in ${TADIR}"
+
+# Clean + build
+make -C "${TADIR}" clean || true
+make -C "${TADIR}" -j"$(nproc)"
+
+# Show artifact (best-effort)
+UUID_HEX=$(grep -Eo '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "${TADIR}"/ta_uuid.h 2>/dev/null | head -n1 || true)
+if [[ -n "${UUID_HEX}" ]]; then
+  TA_FILE="${TADIR}/${UUID_HEX}.ta"
+  if [[ -f "${TA_FILE}" ]]; then
+    echo "[ta] Built TA: ${TA_FILE}"
+  else
+    echo "[ta] Build finished. TA expected near ${TADIR}/ (check make output)."
+  fi
+else
+  echo "[ta] Build finished."
+fi

@@ -47,15 +47,20 @@ make -j$(nproc)
 ./bin/ratls_client 127.0.0.1 8443
 ```
 
-## 完整流程（OP-TEE qemu-v8）
+## 完整流程（OP-TEE qemu-v8，arm64-only）
 ```bash
-make deps          # 安装依赖
-make optee         # 拉取并编译 OP-TEE qemu-v8
-make ta            # 构建 OP-TEE TA
-make tc-aarch64    # 交叉编译 TC
-make qemu          # 启动 QEMU 并等待 SSH
-make deploy        # 推送 TA 与 TC 到 QEMU
+make deps          # 安装依赖（含 repo 工具）
+make optee         # 拉取并构建 OP-TEE（自动生成 arm64 TA DevKit）
+make ta            # 构建 TA（仅 arm64）
+make tc-aarch64    # 交叉编译 TC（aarch64）
+make qemu          # 启动 QEMU 并等待 SSH 就绪
+make deploy        # 推送 TA 与 TC 到 QEMU 客户机
 make selftest      # 在 QEMU 内运行自测（签名/哈希/AEAD）
 ```
 
-更多说明参见 [docs/OPTEE_QEMU_V8.md](docs/OPTEE_QEMU_V8.md)。
+要点说明：
+- 仅构建 64 位 TA：内部使用 `CFG_USER_TA_TARGETS=ta_arm64`，并导出 `optee_os/out/arm/export-ta_arm64`。
+- 环境脚本：`scripts/env-optee-qemu.sh` 动态解析 `REPO_ROOT`，导出 `TA_DEV_KIT_DIR`、`OPTEE_CLIENT_EXPORT` 等。
+- 常见报错（已修复）：若出现 aarch64 编译器报 `-mthumb/-mfloat-abi=hard`，说明误触发了 32 位构建。当前流程已彻底禁用 ta_arm32。
+
+更多说明与排错参见：`docs/OPTEE_QEMU_V8.md`。

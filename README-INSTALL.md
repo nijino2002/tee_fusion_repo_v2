@@ -1,35 +1,37 @@
-# OP-TEE qemu-v8 Build Addon (Ubuntu 24.04)
+# 安装与使用（OP-TEE qemu-v8，arm64-only，Ubuntu 24.04）
 
-## 使用方法
-1. 覆盖你的工程根目录：
-   - 将此包内的 `CMakeLists.txt` 覆盖根目录同名文件；
-   - 将 `scripts/` 与顶层 `Makefile` 拷入工程根目录；
+## 先决条件
+- Ubuntu 22.04/24.04（或兼容）
+- 基础工具：git、gcc、cmake、repo、sshpass、aarch64 交叉工具链
 
-2. 安装依赖（一次）：
-   ```bash
-   make deps
-   ```
+运行一次依赖安装：
+```bash
+make deps
+```
 
-3. 拉取并构建 OP-TEE (qemu-v8) 环境：
-   ```bash
-   make optee
-   ```
+## 初始化 OP-TEE 环境（仅导出 arm64 TA DevKit）
+```bash
+make optee
+# 结束后会生成 scripts/env-optee-qemu.sh 并导出：
+# - TA_DEV_KIT_DIR=$REPO_ROOT/third_party/optee/optee_os/out/arm/export-ta_arm64
+# - OPTEE_CLIENT_EXPORT=$REPO_ROOT/third_party/optee/optee_client/out/export/usr
+```
 
-4. 构建 TA：
-   ```bash
-   make ta
-   ```
+## 构建 TA/TC
+```bash
+make ta            # 仅 arm64 TA
+make tc-aarch64    # aarch64 用户态程序
+```
 
-5. 交叉编译 TC（aarch64）：
-   ```bash
-   make tc-aarch64
-   ```
+## 运行与部署
+```bash
+make qemu          # 启动 qemu-v8 并等待 SSH
+make deploy        # 推送 TA 与 TC
+make selftest      # 在 QEMU 内运行自测
+```
 
-6. 启动 QEMU、部署并自测：
-   ```bash
-   make qemu
-   make deploy
-   make selftest
-   ```
-
-> 预期在 QEMU 内看到 `selftest_crypto` 通过（签名/哈希/AEAD）。
+## 常见问题
+- aarch64 编译器提示 `-mthumb/-mfloat-abi=hard`：
+  - 这是误触发 32 位 TA 构建。当前脚本已使用 `CFG_USER_TA_TARGETS=ta_arm64`，请重新执行 `make optee` 再 `make ta`。
+- `make deploy` 提示找不到路径：
+  - 确认 `source scripts/env-optee-qemu.sh` 后，`echo $REPO_ROOT` 与 `TA_DEV_KIT_DIR` 指向正确目录。

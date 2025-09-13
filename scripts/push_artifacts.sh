@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source "$(dirname "$0")/env-optee-qemu.sh"
-cd "${BASEDIR}"
+
+# Load environment and resolve repo root
+ENV_FILE="$(cd "$(dirname "$0")" && pwd)/env-optee-qemu.sh"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+fi
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$REPO_ROOT"
 
 TA_UUID_HEX="7a9b3b24-3e2f-4d5f-912d-8b7c1355629a"
 TA_BIN="optee/ta/${TA_UUID_HEX}.ta"
-TC_BIN_DIR="${BASEDIR}/build-aarch64/bin"
+TC_BIN_DIR="${REPO_ROOT}/build-aarch64/bin"
 
 if [ ! -f "${TA_BIN}" ]; then
   echo "missing TA: ${TA_BIN}. Run scripts/build_ta.sh" >&2

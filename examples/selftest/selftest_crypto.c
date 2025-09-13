@@ -20,8 +20,14 @@ static int verify_p256_der(const uint8_t* spki, size_t spki_len,
 
 int main(){
   printf("[selftest] start\n");
+  /* 必须先初始化以注册适配器并建立与 TA 的会话 */
+  tee_info_t info = {0};
+  if (tee_init(NULL, &info) != TEE_OK) {
+    fprintf(stderr, "[selftest] tee_init failed\n");
+    return 1;
+  }
   /* sign/verify */
-  tf_key_t k; uint8_t sig[128]; size_t sl=sizeof(sig);
+  tee_attested_key_t k; uint8_t sig[128]; size_t sl=sizeof(sig);
   const char* m = "hello tee-fusion";
   assert(tee_key_generate(TEE_EC_P256, &k)==TEE_OK);
   assert(tee_key_sign(&k, m, strlen(m), sig, &sl)==TEE_OK);
@@ -47,5 +53,6 @@ int main(){
   printf("[selftest] tamper detection ok\n");
 
   printf("[selftest] all pass\n");
+  tee_exit(0);
   return 0;
 }

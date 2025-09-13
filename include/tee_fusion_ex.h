@@ -28,6 +28,17 @@ tee_status_t tee_aead_open(tee_aead_alg_t alg,
                            const uint8_t* ct, size_t ct_len,
                            uint8_t* out_pt, size_t* out_pt_len);
 
+/* --- Key & RNG SAPI for TA side (TEE-agnostic API, platform-specific backend) --- */
+/* Generate an EC P-256 keypair in the TA (kept internal to the TA) */
+tee_status_t tee_sapi_key_generate_p256(void);
+/* Export public key (X||Y), 64 bytes */
+tee_status_t tee_sapi_get_pubkey_xy(uint8_t out_xy[64]);
+/* Sign message (SHA-256 then ECDSA-P256), output DER signature */
+tee_status_t tee_sapi_sign_der(const void* msg, size_t msg_len,
+                               uint8_t* out_sig, size_t* inout_sig_len);
+/* Fill buffer with cryptographically secure random bytes */
+tee_status_t tee_sapi_rand_bytes(void* buf, size_t len);
+
 #ifdef __cplusplus
 }
 #endif
