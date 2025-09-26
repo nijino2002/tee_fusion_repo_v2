@@ -9,7 +9,10 @@ help:
 	@echo "  make optee        - 自动拉取并编译 OP-TEE qemu-v8 环境"
 	@echo "  make ta           - 构建 OP-TEE TA (.ta)"
 	@echo "  make tc-aarch64   - 交叉编译 TC (aarch64) 以在 QEMU 客户机执行"
-	@echo "  make qemu         - 启动 OP-TEE qemu-v8（后台）并等待 SSH 就绪"
+	@echo "  make qemu         - 前台启动 OP-TEE qemu-v8（可在 QEMU 控制台按 'c' 继续）"
+	@echo "                      可传 QEMU_EXTRA_ARGS，例如 9p 共享目录："
+	@echo "                      QEMU_EXTRA_ARGS=\"-fsdev local,id=fs0,path=/home/ldx1/gshare_dir,security_model=none -device virtio-9p-device,fsdev=fs0,mount_tag=host\""
+	@echo "  make qemu.bg      - 后台启动 QEMU 并等待 SSH（用于自动化）"
 	@echo "  make deploy       - 将 TA 和 TC 推送进 QEMU 客户机"
 	@echo "  make selftest     - 在 QEMU 内运行自测（签名/哈希/AEAD）"
 	@echo "  make qemu.stop    - 关闭 QEMU"
@@ -29,7 +32,10 @@ tc-aarch64:
 	./scripts/build_tc_aarch64.sh
 
 qemu:
-	./scripts/run_qemu.sh
+	QEMU_EXTRA_ARGS="$(QEMU_EXTRA_ARGS)" ./scripts/run_qemu_front.sh
+
+qemu.bg:
+	QEMU_EXTRA_ARGS="$(QEMU_EXTRA_ARGS)" ./scripts/run_qemu.sh
 
 deploy:
 	./scripts/push_artifacts.sh
@@ -52,3 +58,7 @@ clean:
 
 distclean: clean
 	rm -rf third_party/optee_build
+.PHONY: optee-clean
+optee-clean:
+	$(MAKE) -C third_party/optee/build linux-clean optee-os-clean arm-tf-clean buildroot-clean
+	rm -rf third_party/optee/qemu/build

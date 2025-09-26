@@ -53,7 +53,7 @@ make deps          # 安装依赖（含 repo 工具）
 make optee         # 拉取并构建 OP-TEE（自动生成 arm64 TA DevKit）
 make ta            # 构建 TA（仅 arm64）
 make tc-aarch64    # 交叉编译 TC（aarch64）
-make qemu          # 启动 QEMU 并等待 SSH 就绪
+make qemu          # 前台启动 QEMU；自动选择空闲 GDB 端口，控制台按 'c' 继续
 make deploy        # 推送 TA 与 TC 到 QEMU 客户机
 make selftest      # 在 QEMU 内运行自测（签名/哈希/AEAD）
 ```
@@ -63,4 +63,35 @@ make selftest      # 在 QEMU 内运行自测（签名/哈希/AEAD）
 - 环境脚本：`scripts/env-optee-qemu.sh` 动态解析 `REPO_ROOT`，导出 `TA_DEV_KIT_DIR`、`OPTEE_CLIENT_EXPORT` 等。
 - 常见报错（已修复）：若出现 aarch64 编译器报 `-mthumb/-mfloat-abi=hard`，说明误触发了 32 位构建。当前流程已彻底禁用 ta_arm32。
 
+### QEMU 交互与共享目录
+- 交互式运行：`make qemu` 会以前台模式启动 QEMU，并自动探测空闲 GDB 端口（避免 1234 被占用导致失败）。控制台可按 `c` 继续启动 normal world。
+- 后台运行：如需后台并等待 SSH（自动化），可用 `make qemu.bg`。
+- 传递额外参数：支持向 QEMU 透传 `QEMU_EXTRA_ARGS`，例如添加 9p 共享目录：
+  ```bash
+  make qemu QEMU_EXTRA_ARGS="-fsdev local,id=fs0,path=/home/ldx1/gshare_dir,security_model=none -device virtio-9p-device,fsdev=fs0,mount_tag=host"
+  ```
+  在客户机中可将 `host` 挂载到目录（示例）：`mount -t 9p -o trans=virtio host /mnt`。
+
 更多说明与排错参见：`docs/OPTEE_QEMU_V8.md`。
+
+## 示例：RA‑TLS（会话绑定 + 远程证明）
+- 生成证书（宿主机）：`bash scripts/gencert.sh`（生成 `server.crt`/`server.key`）
+- 启动 QEMU 并部署：`make qemu` -> `make deploy`
+- 第二个会话（宿主 SSH 进入来宾，默认端口 10022）：
+  ```bash
+  source scripts/env-optee-qemu.sh
+  sshpass -p "$QEMU_GUEST_PASS" ssh -p $QEMU_SSH_PORT -o StrictHostKeyChecking=no $QEMU_GUEST_USER@127.0.0.1
+  ```
+- 在来宾运行：
+  ```bash
+  /root/ratls_server 0.0.0.0 8443 /root/server.crt /root/server.key &> /root/ratls_server.log &
+  /root/ratls_client 127.0.0.1 8443
+  ```
+  server 会将 TEE 取证（U‑Evidence）和会话绑定签名通过 HTTP 返回，client 读取并打印长度（演示通路）。
+
+## 停止 QEMU
+- 前台（make qemu）：在 QEMU monitor 输入 `quit`，或在宿主 `pkill -f qemu-system-aarch64`/`pkill -f soc_term.py`
+- 后台（make qemu.bg）：`make qemu.stop`
+
+## 其他测试
+- `test_cbor`：主机侧单元测试，验证 `core/util/cbor_min` 的编码（与 TA 无关）。构建后位于 `build-aarch64/bin/test_cbor`。

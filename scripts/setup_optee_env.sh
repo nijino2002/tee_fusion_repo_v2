@@ -32,12 +32,14 @@ ENV_FILE="${BASEDIR}/scripts/env-optee-qemu.sh"
 PLATFORM="auto"
 FORCE=0
 PATCH_TC=1
+CLIENT_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform) PLATFORM="${2:-}"; shift 2;;
     --force)    FORCE=1; shift;;
     --no-patch-tc) PATCH_TC=0; shift;;
+    --client-only) CLIENT_ONLY=1; shift;;
     -h|--help)
       cat <<'USAGE'
 Usage: bash scripts/setup_optee_env.sh [options]
@@ -51,49 +53,58 @@ USAGE
 done
 
 say "Base dir: ${BASEDIR}"
-[[ -d "${OS_DIR}" ]]     || die "Missing ${OS_DIR}. Did you 'repo init/sync' manifest into third_party/optee?"
 [[ -d "${CLIENT_DIR}" ]] || die "Missing ${CLIENT_DIR}. Did you 'repo init/sync' manifest into third_party/optee?"
+if [[ ${CLIENT_ONLY} -eq 0 ]]; then
+  [[ -d "${OS_DIR}" ]] || die "Missing ${OS_DIR}. Did you 'repo init/sync' manifest into third_party/optee?"
+fi
 
-# --- Determine CROSS_COMPILE64 ---
-CROSS=""
+# --- Determine toolchains ---
+CROSS64=""
 if command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
-  CROSS="aarch64-linux-gnu-"
+  CROSS64="aarch64-linux-gnu-"
 elif [[ -x "${OPTEE_ROOT}/toolchains/aarch64/bin/aarch64-linux-gnu-gcc" ]]; then
   export PATH="${OPTEE_ROOT}/toolchains/aarch64/bin:${PATH}"
-  CROSS="aarch64-linux-gnu-"
+  CROSS64="aarch64-linux-gnu-"
 fi
-[[ -n "${CROSS}" ]] || die "aarch64 toolchain not found. Run 'make deps' or ensure ${OPTEE_ROOT}/toolchains is present."
+[[ -n "${CROSS64}" ]] || die "aarch64 toolchain not found. Run 'make deps' or ensure ${OPTEE_ROOT}/toolchains is present."
 
-say "Using CROSS_COMPILE64=${CROSS}"
+say "Using CROSS_COMPILE64=${CROSS64}"
 
-# --- Determine PLATFORM ---
-if [[ "${PLATFORM}" == "auto" ]]; then
-  if [[ -d "${OS_DIR}/core/arch/arm/plat-qemu_virt" ]]; then
-    PLATFORM="qemu_virt"
-  else
-    PLATFORM="vexpress-qemu_armv8a"
+if [[ ${CLIENT_ONLY} -eq 0 ]]; then
+  # --- Determine PLATFORM ---
+  if [[ "${PLATFORM}" == "auto" ]]; then
+    if [[ -d "${OS_DIR}/core/arch/arm/plat-qemu_virt" ]]; then
+      PLATFORM="qemu_virt"
+    else
+      PLATFORM="vexpress-qemu_armv8a"
+    fi
   fi
+  say "Using PLATFORM=${PLATFORM} (you can override with --platform ...)"
 fi
-say "Using PLATFORM=${PLATFORM} (you can override with --platform ...)"
 
-# --- Build optee_os (TA DevKit) ---
-pushd "${OS_DIR}" >/dev/null
-  if [[ ${FORCE} -eq 1 ]]; then
-    say "Cleaning ${OS_DIR}/out/arm ..."
-    rm -rf out/arm
-  fi
-  say "Building optee_os (this may take a few minutes)..."
-  make -j"$(nproc)" \
-    CROSS_COMPILE64="${CROSS}" \
-    PLATFORM="${PLATFORM}" \
-    CFG_ARM64_core=y \
-    O=out/arm
+if [[ ${CLIENT_ONLY} -eq 0 ]]; then
+  # --- Build optee_os (TA DevKit) ---
+  pushd "${OS_DIR}" >/dev/null
+    if [[ ${FORCE} -eq 1 ]]; then
+      say "Cleaning ${OS_DIR}/out/arm ..."
+      rm -rf out/arm
+    fi
+    say "Building optee_os (this may take a few minutes)..."
+    make -j"$(nproc)" \
+      CROSS_COMPILE64="${CROSS64}" \
+      PLATFORM="${PLATFORM}" \
+      CFG_ARM64_core=y \
+      CFG_TA_ARM32_SUPPORT=n \
+      O=out/arm || true
 
-  EXPORT_DIR="out/arm/export-ta_arm64"
-  [[ -d "${EXPORT_DIR}" ]] || die "TA DevKit not found at ${OS_DIR}/${EXPORT_DIR}"
-  EXPORT_ABS="${OS_DIR}/${EXPORT_DIR}"
-  ok "TA DevKit: ${EXPORT_ABS}"
-popd >/dev/null
+    EXPORT_DIR="out/arm/export-ta_arm64"
+    [[ -d "${EXPORT_DIR}" ]] || die "TA DevKit not found at ${OS_DIR}/${EXPORT_DIR}"
+    EXPORT_ABS="${OS_DIR}/${EXPORT_DIR}"
+    ok "TA DevKit: ${EXPORT_ABS}"
+  popd >/dev/null
+else
+  EXPORT_ABS="${TA_DEV_KIT_DIR}"
+fi
 
 # --- Build & export optee_client ---
 pushd "${CLIENT_DIR}" >/dev/null
